@@ -169,30 +169,33 @@ async def watermark_pdf(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-
-# 5. PDF TO DOCX
-@app.post("/api/convert/pdf-to-docx")
-async def pdf_to_docx(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+# 5 COMPRESS
+@app.post("/api/compress")
+async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
-        input_path = f"{TEMP_DIR}/{file.filename}"
-        output_filename = f"{file.filename.rsplit('.', 1)[0]}.docx"
-        output_path = f"{TEMP_DIR}/{output_filename}"
+        reader = PdfReader(file.file)
+        writer = PdfWriter()
 
-        # Save uploaded PDF temporarily
-        with open(input_path, "wb") as f:
-            f.write(await file.read())
+        for page in reader.pages:
+            # 1. Add page to writer FIRST
+            writer.add_page(page)
+            
+            # 2. Then compress the page object that is NOW inside the writer
+            # (This avoids the "Page must be part of a PdfWriter" error)
+            writer.pages[-1].compress_content_streams() 
 
-        # Convert
-        cv = Converter(input_path)
-        cv.convert(output_path, start=0, end=None)
-        cv.close()
+        # 3. Apply global optimization
+        writer.compress_identical_objects(remove_identicals=True)
 
-        background_tasks.add_task(cleanup_file, input_path)
+        output_path = f"{TEMP_DIR}/compressed_{file.filename}"
+        with open(output_path, "wb") as f:
+            writer.write(f)
+
         background_tasks.add_task(cleanup_file, output_path)
-
-        return FileResponse(output_path, filename=output_filename)
+        return FileResponse(output_path, filename=f"Optimized_{file.filename}")
 
     except Exception as e:
+        print(f"Compression Error: {e}") # Print to terminal for debugging
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 # 6. PDF TO TXT

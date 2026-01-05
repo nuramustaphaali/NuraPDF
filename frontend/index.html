@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NuraPDF | Professional Suite</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+
+    
+    <link rel="stylesheet" href="css/style.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit/dist/fontkit.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src='https://unpkg.com/tesseract.js@v2.1.0/dist/tesseract.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+    <div class="app-layout">
+        
+        <nav class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">N</div>
+                <span>NuraPDF</span>
+            </div>
+            
+            <div class="menu-label">CORE</div>
+            <a href="#" onclick="UI.switchView('editor')" class="menu-item active">
+                <span>✎</span> Edit PDF
+            </a>
+
+            <div class="menu-label">TOOLS</div>
+            <a href="#" onclick="UI.switchView('merge')" class="menu-item">
+                <span>☷</span> Merge PDFs
+            </a>
+            <a href="#" onclick="UI.switchView('split')" class="menu-item">
+                <span>✂</span> Split PDF
+            </a>
+            <a href="#" onclick="UI.switchView('pdf-to-img')" class="menu-item">
+                <span>🖼</span> PDF to JPG
+            </a>
+            <a href="#" onclick="UI.switchView('img-to-pdf')" class="menu-item">
+                <span>📄</span> JPG to PDF
+            </a>
+            <a href="#" onclick="UI.switchView('security')" class="menu-item">
+                <span>🔒</span> Security & Optimize
+            </a>
+            <div class="menu-label">CONVERT & DATA</div>
+                <a href="#" onclick="UI.switchView('convert')" class="menu-item">
+                    <span>⇌</span> Convert
+                </a>
+                <a href="#" onclick="UI.switchView('ocr')" class="menu-item">
+                    <span>👁</span> OCR / Scan
+                </a>
+        </nav>
+
+        <main class="main-content">
+            
+            <div id="view-editor" class="view-section active">
+                
+                <header class="top-bar">
+                    <div class="file-controls">
+                        <input type="file" id="fileInput" accept=".pdf" hidden>
+                        <button onclick="document.getElementById('fileInput').click()" class="btn-primary">Upload PDF</button>
+                        <span class="sep"></span>
+                        <button id="zoomOut" class="btn-icon">-</button>
+                        <span id="zoomLevel" style="font-size: 12px; width: 40px; text-align: center;">100%</span>
+                        <button id="zoomIn" class="btn-icon">+</button>
+                    </div>
+
+                    <div class="page-controls">
+                        <button id="rotateLeft" class="btn-icon">↺</button>
+                        <button id="rotateRight" class="btn-icon">↻</button>
+                        <button id="deletePage" class="btn-danger-sm">Del Page</button>
+                    </div>
+
+                    <div class="save-controls">
+                        <button id="btnDownload" onclick="Exporter.downloadPDF()" class="btn-success">Download PDF</button>
+                    </div>
+                </header>
+                
+                <div class="workspace-container">
+                    <aside class="sidebar-thumbs" id="thumbnailContainer"></aside>
+                    
+                    <div class="canvas-scroll-area">
+                        <div id="canvas-wrapper" style="position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+                            <canvas id="the-canvas" style="position: absolute; left: 0; top: 0; z-index: 1;"></canvas>
+                            <canvas id="fabric-canvas" style="position: absolute; left: 0; top: 0; z-index: 2;"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="editor-tools floating-dock">
+                    
+                    <div class="tool-section">
+                        <button onclick="Tools.addText()" title="Add Text">T</button>
+                        <button onclick="Tools.addHighlight()" title="Highlight" style="color: #ffff00;">🖍</button>
+                        <button onclick="Tools.toggleDraw()" title="Freehand Draw">✎</button>
+                        <button onclick="Tools.addArrow()" title="Arrow">↗</button>
+                        <button onclick="Tools.addRect()" title="Box">□</button>
+                        <button onclick="Tools.addCircle()" title="Circle">◯</button>
+                        <button onclick="Tools.addImage()" title="Image">🖼</button>
+                    </div>
+
+                    <div class="divider-v"></div>
+
+                    <div class="tool-section">
+                        <button onclick="Tools.addEraser()" title="Visual Eraser (Whiteout)" style="background: white; color: black; border-radius: 4px;">⌫</button>
+                        <button onclick="Tools.deleteSelected()" class="btn-danger-icon" title="Delete Selected Object">✕</button>
+                    </div>
+
+                    <div class="divider-v"></div>
+
+                    <div class="style-section">
+                        <input type="color" id="colorPicker" value="#ff0000" onchange="Tools.updateStyle('color', this.value)">
+                        <input type="range" id="widthPicker" min="1" max="10" value="3" onchange="Tools.updateStyle('width', this.value)" title="Thickness" style="width: 60px;">
+                        <input type="number" id="fontSizePicker" min="10" max="60" value="20" onchange="Tools.updateStyle('fontSize', this.value)" title="Size" style="width: 40px; background: #333; border: none; color: white; padding: 2px;">
+                    </div>
+
+                    <div class="divider-v"></div>
+
+                    <div class="hack-section">
+                        <input type="text" id="findTxt" placeholder="Find" class="mini-input">
+                        <input type="text" id="repTxt" placeholder="Rep" class="mini-input">
+                        <button onclick="StreamEditor.replaceTextValues(document.getElementById('findTxt').value, document.getElementById('repTxt').value)" class="btn-hack">REP</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-merge" class="view-section hidden">
+                <div class="tool-card">
+                    <h1>Merge PDFs</h1>
+                    <p>Combine multiple files into one.</p>
+                    <div class="upload-zone" onclick="document.getElementById('mergeInput').click()">
+                        <span style="font-size: 24px;">⊕</span><br>
+                        <span>Tap to Select PDFs</span>
+                        <input type="file" id="mergeInput" multiple accept=".pdf" hidden>
+                    </div>
+                    <div id="mergeList" class="file-grid"></div>
+                    
+                    <button id="btnMerge" onclick="ToolsEngine.mergePdfs()" class="btn-success">Merge PDFs</button>
+                </div>
+            </div>
+
+            <div id="view-split" class="view-section hidden">
+                <div class="tool-card">
+                    <h1>Split PDF</h1>
+                    <p>Extract specific pages.</p>
+                    <div class="upload-zone" onclick="document.getElementById('splitInput').click()">
+                        <span style="font-size: 24px;">✂</span><br>
+                        <span>Select PDF</span>
+                        <input type="file" id="splitInput" accept=".pdf" hidden>
+                    </div>
+                    <div id="splitFileDisplay" class="file-grid"></div>
+
+                    <div class="options-panel">
+                        <label style="font-size: 12px; color: #94a3b8;">Page Range (e.g. 1-3, 5)</label>
+                        <input type="text" id="splitRange" placeholder="1-3" class="input-std">
+                    </div>
+                    <button id="btnSplit" onclick="ToolsEngine.splitPdf()" class="btn-success">Split & Download</button>
+                </div>
+            </div>
+
+            <div id="view-pdf-to-img" class="view-section hidden">
+                <div class="tool-card">
+                    <h1>PDF to JPG</h1>
+                    <div class="upload-zone" onclick="document.getElementById('p2iInput').click()">
+                        <span style="font-size: 24px;">🖼</span><br>
+                        <span id="p2iLabel">Select PDF</span>
+                        <input type="file" id="p2iInput" accept=".pdf" hidden>
+                    </div>
+                    <button id="btnP2I" onclick="ToolsEngine.pdfToImages()" class="btn-success">Convert to ZIP</button>
+                </div>
+            </div>
+
+            <div id="view-img-to-pdf" class="view-section hidden">
+                 <div class="tool-card">
+                    <h1>Images to PDF</h1>
+                    <div class="upload-zone" onclick="document.getElementById('i2pInput').click()">
+                        <span style="font-size: 24px;">📄</span><br>
+                        <span>Select Images</span>
+                        <input type="file" id="i2pInput" multiple accept="image/*" hidden>
+                    </div>
+                    <div id="i2pList" class="file-grid"></div>
+                    <button id="btnI2P" onclick="ToolsEngine.imagesToPdf()" class="btn-success">Create PDF</button>
+                </div>
+            </div>
+
+           <div id="view-security" class="view-section hidden">
+                <div class="tool-card">
+                    <h1>PDF Security & Optimize</h1>
+                    <p>Processed locally on your machine backend.</p>
+                    
+                    <div class="upload-zone" onclick="document.getElementById('secInput').click()">
+                        <span style="font-size: 24px;">⚙</span><br>
+                        <span id="secLabel">Select PDF</span>
+                        <input type="file" id="secInput" accept=".pdf" hidden onchange="document.getElementById('secLabel').innerText = this.files[0].name">
+                    </div>
+
+                    <div class="card-header">Optimization</div>
+                    <button onclick="BackendTools.compress()" class="btn-action" style="width: 100%; margin-bottom: 20px; background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);">
+                        ⚡ Compress PDF
+                    </button>
+
+                    <div class="card-header">Protection</div>
+                    <div class="action-grid">
+                        <div>
+                            <input type="password" id="encPass" placeholder="Set Password..." class="input-premium">
+                            <button onclick="BackendTools.encrypt()" class="btn-action" style="margin-top: 8px; font-size: 13px; width: 100%; background: #ef4444;">🔒 Lock</button>
+                        </div>
+                        <div>
+                            <input type="password" id="decPass" placeholder="Unlock Password..." class="input-premium">
+                            <button onclick="BackendTools.decrypt()" class="btn-action" style="margin-top: 8px; font-size: 13px; width: 100%; background: #10b981;">🔓 Unlock</button>
+                        </div>
+                    </div>
+
+                    <div class="card-header" style="margin-top: 20px;">Branding</div>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="wmText" placeholder="Watermark Text (e.g. CONFIDENTIAL)" class="input-premium">
+                        <button onclick="BackendTools.watermark()" class="btn-action" style="background: #3b82f6; width: auto; padding: 0 20px;">Apply</button>
+                    </div>
+                </div>
+            </div>
+            
+
+            <div id="view-convert" class="view-section hidden">
+                <div class="tool-card">
+                    <h1>Document Converter</h1>
+                    <p>High-fidelity conversion using Python engines.</p>
+                    
+                    <div class="upload-zone" onclick="document.getElementById('convInput').click()">
+                        <span style="font-size: 24px;">⇌</span><br>
+                        <span id="convLabel">Select File (PDF or DOCX)</span>
+                        <input type="file" id="convInput" onchange="document.getElementById('convLabel').innerText = this.files[0].name" hidden>
+                    </div>
+
+                    <div class="card-header">Select Format</div>
+                    <div class="action-grid">
+                        <button onclick="BackendTools.convert('pdf-to-docx')" class="btn-warning" style="background: #2563eb;">
+                            <span style="display:block; border: none; border-radius:10px; font-size: 20px; margin-bottom:5px;">W</span> PDF → Word
+                        </button>
+                        <button onclick="BackendTools.convert('pdf-to-txt')" class="btn-action" style="background: #475569;">
+                            <span style="display:block; font-size: 20px; margin-bottom:5px;">T</span> PDF → Text
+                        </button>
+                        <button onclick="BackendTools.convert('docx-to-pdf')" class="btn-action" style="background: #dc2626;">
+                            <span style="display:block; font-size: 20px; margin-bottom:5px;">P</span> Word → PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-ocr" class="view-section hidden">
+    <div class="tool-card">
+        <h1>OCR Scanner</h1>
+        <p>Extract text from images locally.</p>
+        
+        <div class="upload-zone" onclick="document.getElementById('ocrInput').click()">
+            <span style="font-size: 24px;">👁</span><br>
+            <span id="ocrLabel">Select Image or PDF</span>
+            <input type="file" id="ocrInput" accept="image/*, .pdf" onchange="OCREngine.loadImage(this)" hidden>
+        </div>
+
+        <div id="ocrPreview" style="margin: 15px 0; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); display: none;">
+            <img id="ocrImg" style="width: 100%; display: block; opacity: 0.8;">
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <select id="ocrLang" class="input-premiumm">
+                <option value="eng">English</option>
+                <option value="spa">Spanish</option>
+                <option value="fra">French</option>
+                <option value="deu">German</option>
+            </select>
+            <button id="btnOCR" onclick="OCREngine.run()" class="btn-action" style="flex: 1;">Start Scan</button>
+        </div>
+        
+        <textarea id="ocrResult" class="input-premium" style="height: 120px;" placeholder="Extracted text will appear here..."></textarea>
+        
+        <button onclick="OCREngine.downloadTxt()" class="btn-action" style="margin-top: 15px; background: #334155; width: 100%;">
+            ⬇ Download Text File
+        </button>
+    </div>
+</div>
+
+
+        </main>
+    </div> 
+
+    <script src="js/ui.js"></script>
+    
+    <script src="js/tools-engine.js"></script>
+    
+    <script src="js/app.js"></script>
+    
+    <script src="js/exporter.js"></script>
+    
+    <script src="js/stream-editor.js"></script>
+
+    <script src="js/backend-client.js"></script>
+
+    <script src="js/ocr-engine.js"></script>
+</body>
+</html>

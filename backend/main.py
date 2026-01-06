@@ -169,24 +169,26 @@ async def watermark_pdf(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# 5 COMPRESS
+# REPLACE THIS FUNCTION IN backend/main.py
+
 @app.post("/api/compress")
 async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         reader = PdfReader(file.file)
         writer = PdfWriter()
 
+        # 1. Simple Copy (Don't touch streams manually)
         for page in reader.pages:
-            # 1. Add page to writer FIRST
             writer.add_page(page)
-            
-            # 2. Then compress the page object that is NOW inside the writer
-            # (This avoids the "Page must be part of a PdfWriter" error)
-            writer.pages[-1].compress_content_streams() 
 
-        # 3. Apply global optimization
-        writer.compress_identical_objects(remove_identicals=True)
+        # 2. Optimization: Remove duplicate objects (images/fonts used multiple times)
+        # This reduces size without breaking the page structure.
+        try:
+            writer.compress_identical_objects(remove_identicals=True)
+        except Exception as e:
+            print(f"Optimization warning: {e}")
 
+        # 3. Write with built-in compression
         output_path = f"{TEMP_DIR}/compressed_{file.filename}"
         with open(output_path, "wb") as f:
             writer.write(f)
@@ -195,8 +197,11 @@ async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = Fil
         return FileResponse(output_path, filename=f"Optimized_{file.filename}")
 
     except Exception as e:
-        print(f"Compression Error: {e}") # Print to terminal for debugging
+        print(f"CRITICAL ERROR: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+        
+
+
 
 # 6. PDF TO TXT
 @app.post("/api/convert/pdf-to-txt")

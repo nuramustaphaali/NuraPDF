@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-
+import fitz
 from pdf2docx import Converter
 from pdfminer.high_level import extract_text
 import mammoth
@@ -169,37 +169,35 @@ async def watermark_pdf(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# REPLACE THIS FUNCTION IN backend/main.py
-
+# --- NEW COMPRESSION ENGINE (PyMuPDF) ---
 @app.post("/api/compress")
 async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
-        reader = PdfReader(file.file)
-        writer = PdfWriter()
+        input_path = f"{TEMP_DIR}/{file.filename}"
+        output_path = f"{TEMP_DIR}/optimized_{file.filename}"
 
-        # 1. Simple Copy (Don't touch streams manually)
-        for page in reader.pages:
-            writer.add_page(page)
+        # 1. Save uploaded file to temp
+        with open(input_path, "wb") as f:
+            f.write(await file.read())
 
-        # 2. Optimization: Remove duplicate objects (images/fonts used multiple times)
-        # This reduces size without breaking the page structure.
-        try:
-            writer.compress_identical_objects(remove_identicals=True)
-        except Exception as e:
-            print(f"Optimization warning: {e}")
+        # 2. Open with PyMuPDF
+        doc = fitz.open(input_path)
 
-        # 3. Write with built-in compression
-        output_path = f"{TEMP_DIR}/compressed_{file.filename}"
-        with open(output_path, "wb") as f:
-            writer.write(f)
+        # 3. Save with Aggressive Garbage Collection
+        # garbage=4: Remove unused objects, duplicate fonts, and streams
+        # deflate=True: Compress all streams
+        doc.save(output_path, garbage=4, deflate=True)
+        doc.close()
 
+        # 4. Cleanup
+        background_tasks.add_task(cleanup_file, input_path)
         background_tasks.add_task(cleanup_file, output_path)
+
         return FileResponse(output_path, filename=f"Optimized_{file.filename}")
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {e}")
+        print(f"Compression Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
-        
 
 
 

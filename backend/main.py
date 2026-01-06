@@ -1,12 +1,12 @@
 import os
 import io
+import fitz  # PyMuPDF (Robust Engine)
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-import fitz
 from pdf2docx import Converter
 from pdfminer.high_level import extract_text
 import mammoth
@@ -39,31 +39,32 @@ def cleanup_file(path: str):
 def health_check():
     return {"status": "NuraPDF Backend is Running"}
 
-# 1. COMPRESS PDF (Optimization)
+# 1. COMPRESS PDF (PyMuPDF Engine - Stable)
 @app.post("/api/compress")
 async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    print(f"--- Processing Compression: {file.filename} ---")
     try:
-        reader = PdfReader(file.file)
-        writer = PdfWriter()
+        input_path = f"{TEMP_DIR}/{file.filename}"
+        output_path = f"{TEMP_DIR}/optimized_{file.filename}"
 
-        for page in reader.pages:
-            # pypdf compression (lossless structure optimization)
-            page.compress_content_streams() 
-            writer.add_page(page)
+        # Save uploaded file
+        with open(input_path, "wb") as f:
+            f.write(await file.read())
 
-        # Advanced: Deduplicate objects
-        writer.compress_identical_objects(remove_identicals=True)
-
-        output_path = f"{TEMP_DIR}/compressed_{file.filename}"
-        with open(output_path, "wb") as f:
-            writer.write(f)
-
-        # Register auto-delete
-        background_tasks.add_task(cleanup_file, output_path)
+        # Open with PyMuPDF
+        doc = fitz.open(input_path)
         
+        # Save with Aggressive Garbage Collection (4) and Deflate
+        doc.save(output_path, garbage=4, deflate=True)
+        doc.close()
+
+        background_tasks.add_task(cleanup_file, input_path)
+        background_tasks.add_task(cleanup_file, output_path)
+
         return FileResponse(output_path, filename=f"Optimized_{file.filename}")
 
     except Exception as e:
+        print(f"Compression Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
@@ -133,13 +134,13 @@ async def watermark_pdf(
     text: str = Form(...)
 ):
     try:
-        # A. Create Watermark PDF in memory using ReportLab
+        # A. Create Watermark PDF in memory
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
         can.setFont("Helvetica-Bold", 50)
         can.setFillColorRGB(0.5, 0.5, 0.5, 0.3) # Grey, Transparent
         
-        # Draw text at 45 degrees in center
+        # Draw text at 45 degrees
         can.saveState()
         can.translate(300, 400)
         can.rotate(45)
@@ -156,7 +157,7 @@ async def watermark_pdf(
         writer = PdfWriter()
 
         for page in reader.pages:
-            page.merge_page(watermark_page) # The magic merge
+            page.merge_page(watermark_page)
             writer.add_page(page)
 
         output_path = f"{TEMP_DIR}/watermarked_{file.filename}"
@@ -169,39 +170,34 @@ async def watermark_pdf(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# --- NEW COMPRESSION ENGINE (PyMuPDF) ---
-@app.post("/api/compress")
-async def compress_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+
+# 5. PDF TO DOCX (Word) -- MISSING IN YOUR PREVIOUS FILE
+@app.post("/api/convert/pdf-to-docx")
+async def pdf_to_docx(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         input_path = f"{TEMP_DIR}/{file.filename}"
-        output_path = f"{TEMP_DIR}/optimized_{file.filename}"
+        output_filename = f"{file.filename.rsplit('.', 1)[0]}.docx"
+        output_path = f"{TEMP_DIR}/{output_filename}"
 
-        # 1. Save uploaded file to temp
+        # Save uploaded PDF
         with open(input_path, "wb") as f:
             f.write(await file.read())
 
-        # 2. Open with PyMuPDF
-        doc = fitz.open(input_path)
+        # Convert
+        cv = Converter(input_path)
+        cv.convert(output_path, start=0, end=None)
+        cv.close()
 
-        # 3. Save with Aggressive Garbage Collection
-        # garbage=4: Remove unused objects, duplicate fonts, and streams
-        # deflate=True: Compress all streams
-        doc.save(output_path, garbage=4, deflate=True)
-        doc.close()
-
-        # 4. Cleanup
         background_tasks.add_task(cleanup_file, input_path)
         background_tasks.add_task(cleanup_file, output_path)
 
-        return FileResponse(output_path, filename=f"Optimized_{file.filename}")
+        return FileResponse(output_path, filename=output_filename)
 
     except Exception as e:
-        print(f"Compression Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-
-# 6. PDF TO TXT
+# 6. PDF TO TXT (Text)
 @app.post("/api/convert/pdf-to-txt")
 async def pdf_to_txt(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
@@ -220,7 +216,8 @@ async def pdf_to_txt(background_tasks: BackgroundTasks, file: UploadFile = File(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# 7. DOCX TO PDF (The Pip-Only Bridge Method)
+
+# 7. DOCX TO PDF (Word to PDF)
 @app.post("/api/convert/docx-to-pdf")
 async def docx_to_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
@@ -238,7 +235,6 @@ async def docx_to_pdf(background_tasks: BackgroundTasks, file: UploadFile = File
             html = result.value
 
         # Step B: HTML -> PDF (using xhtml2pdf)
-        # We add some basic CSS to make it look decent
         full_html = f"""
         <html>
         <head>
@@ -264,6 +260,7 @@ async def docx_to_pdf(background_tasks: BackgroundTasks, file: UploadFile = File
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
 
 if __name__ == "__main__":
     import uvicorn
